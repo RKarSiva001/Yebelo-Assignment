@@ -1,0 +1,7 @@
+# Python dependencies for Data Ingestion Script
+
+# Kafka client for Redpanda
+kafka-python==2.0.2
+
+# CSV parsing (built-in, but listed for documentation)
+# No additional libraries needed for CSV

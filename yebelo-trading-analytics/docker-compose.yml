@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Redpanda broker - our main message streaming platform
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.5
+    container_name: redpanda-broker
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      # Kafka API listeners - internal for Docker network, external for host machine
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      # Allows Redpanda to work without strict requirements (for local development)
+      - --overprovisioned
+      # Single node mode (no replication needed for local testing)
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      # Disables kernel version check for compatibility
+      - --node-id 0
+      - --check=false
+    ports:
+      # Kafka API port (external access)
+      - "19092:19092"
+      # Kafka API port (internal access)
+      - "9092:9092"
+      # Schema Registry port
+      - "8081:8081"
+      # Admin API port
+      - "9644:9644"
+    volumes:
+      # Persist Redpanda data
+      - redpanda-data:/var/lib/redpanda/data
+    networks:
+      - trading-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Redpanda Console - Web UI for managing topics and viewing messages
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.4.3
+    container_name: redpanda-console
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+        server:
+          listenPort: 8080
+    ports:
+      # Console web interface
+      - "8080:8080"
+    networks:
+      - trading-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+# Named volume for data persistence
+volumes:
+  redpanda-data:
+
+# Dedicated network for all services
+networks:
+  trading-network:
+    driver: bridge
